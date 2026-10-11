@@ -1,4 +1,5 @@
 #include "OWSVehicleInteractionComponent.h"
+#include "OWSCharacterContactComponent.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSequence.h"
@@ -321,8 +322,9 @@ bool UOWSVehicleInteractionComponent::CanEnterVehicleThroughDoor(
 	OutFailureReason = FText::GetEmpty();
 	APlayerController* Controller = Cast<APlayerController>(GetOwner());
 	ACharacter* Character = Controller ? Cast<ACharacter>(Controller->GetPawn()) : nullptr;
+	const auto* Contact = Character ? Character->FindComponentByClass<UOWSCharacterContactComponent>() : nullptr;
 	if (!Controller || !Character || !RequestedVehicle || RequestedDoorId.IsNone() ||
-		OccupiedVehicle || bControlledBailoutActive || bRagdollActive)
+		OccupiedVehicle || bControlledBailoutActive || bRagdollActive || (Contact && !Contact->IsUpright()))
 	{
 		OutFailureReason = NSLOCTEXT(
 			"OWSVehicleInteraction", "EntryStateUnavailable",
@@ -376,6 +378,8 @@ bool UOWSVehicleInteractionComponent::TryEnterVehicle(
 	{
 		return false;
 	}
+	const auto* Contact = Character->FindComponentByClass<UOWSCharacterContactComponent>();
+	if (Contact && !Contact->IsUpright()) return false;
 
 	UOWSStockVehicleInteractionComponent* Interaction = nullptr;
 	FName DoorId = NAME_None;
@@ -700,6 +704,7 @@ void UOWSVehicleInteractionComponent::BeginControlledBailout(
 		UE_LOG(LogTemp, Warning,
 			TEXT("[VIC] Controlled bailout animation could not be loaded for %s."),
 			*Character.GetName());
+		FinishControlledBailout();
 	}
 }
 
@@ -973,10 +978,8 @@ void UOWSVehicleInteractionComponent::FinishControlledBailout()
 						CachedControlledAnimationMode));
 				}
 			}
-			else if (UAnimInstance* AnimInstance = Mesh->GetAnimInstance())
-			{
-				AnimInstance->StopSlotAnimation(0.12f, TEXT("DefaultSlot"));
-			}
+			// A missing roll never acquired animation ownership. In that case,
+			// leave unrelated dynamic montages and their slot state untouched.
 		}
 	}
 	if (bControlledBailoutAddedMoveIgnore)

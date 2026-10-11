@@ -5,6 +5,7 @@
 #include "VehicleWheelComponent.h"
 #include "AsyncTickFunctions.h"
 #include "VehicleUtilities.h"
+#include "Engine/CollisionProfile.h"
 
 FVehicleSuspensionSolver::FVehicleSuspensionSolver()
 {
@@ -24,6 +25,11 @@ bool FVehicleSuspensionSolver::Initialize(UVehicleWheelComponent* WheelComponent
 		QueryParams.bReturnPhysicalMaterial = true;
 		QueryParams.bReturnFaceIndex = false;
 		QueryParams.bTraceComplex = false;
+		// A character is not a suspension support surface. Otherwise a wheel
+		// can treat an upright capsule as a curb and catapult the chassis.
+		ResponseParams.CollisionResponse.SetResponse(ECC_Pawn, ECR_Ignore);
+		if (UCollisionProfile::Get()->ReturnChannelNameFromContainerIndex(ECC_GameTraceChannel2) == TEXT("OWSCharacterBody"))
+			ResponseParams.CollisionResponse.SetResponse(ECC_GameTraceChannel2, ECR_Ignore);
 		
 		State.bIsRightWheel = WheelComponent->GetRelativeTransform().GetLocation().Y >= 0.f;
 		
@@ -259,15 +265,15 @@ void FVehicleSuspensionSolver::RoughlyInitializeState(const FTransform& Componen
 {
 	float SideSign = ComponentRelativeTransform.GetLocation().Y >= 0.f ? 1.f : -1.f;
 
-	// 1. ÔÚ×é¼ş±¾µØ¿Õ¼ä¶¨ÒåËş¶¥
+	// 1. åœ¨ç»„ä»¶æœ¬åœ°ç©ºé—´å®šä¹‰å¡”é¡¶
 	FVector3f TopMountLocalPos = KineConfig.TopMountLocalLocation;
 	TopMountLocalPos.Y *= SideSign;
 
-	// 2. ÑØ×Å×é¼ş×ÔÉíµÄ¾Ö²¿ Up Öá£¨»òÕß°Ú±Û¹ì¼£Ãæ£©ÏòÏÂ×ö³õÊ¼¹À¼Æ£¬¶ø²»ÊÇµ×ÅÌ Z Öá
+	// 2. æ²¿ç€ç»„ä»¶è‡ªèº«çš„å±€éƒ¨ Up è½´ï¼ˆæˆ–è€…æ‘†è‡‚è½¨è¿¹é¢ï¼‰å‘ä¸‹åšåˆå§‹ä¼°è®¡ï¼Œè€Œä¸æ˜¯åº•ç›˜ Z è½´
 	float GuessStrutLen = KineConfig.MinStrutLength + KineConfig.Stroke;
 	FVector3f InitialLowerBallJointLocal = TopMountLocalPos - FVector3f(0.f, 0.f, GuessStrutLen);
 
-	// 3. Ò»´ÎĞÔÍ³Ò»×ª»»µ½µ×ÅÌ¿Õ¼ä£¬±£Ö¤×İÏò X_c µÄÏßĞÔÍ¬²½£¬¾ø²»ÎÛÈ¾·½ÏòÏòÁ¿
+	// 3. ä¸€æ¬¡æ€§ç»Ÿä¸€è½¬æ¢åˆ°åº•ç›˜ç©ºé—´ï¼Œä¿è¯çºµå‘ X_c çš„çº¿æ€§åŒæ­¥ï¼Œç»ä¸æ±¡æŸ“æ–¹å‘å‘é‡
 	FTransform3f CompToChassis = (FTransform3f)ComponentRelativeTransform;
 	InState.LowerBallJointChassisLocation = CompToChassis.TransformPositionNoScale(InitialLowerBallJointLocal);
 
@@ -279,7 +285,7 @@ void FVehicleSuspensionSolver::RoughlyInitializeState(const FTransform& Componen
 	FQuat4f HubChassisRot = (SpindleMountRotation).GetNormalized();
 	InState.HubChassisRotation = HubChassisRot;
 
-	// 4. °Ñ HubOffset Ò²¸ú×ÅĞı×ª¹ıÈ¥£¬×÷Îª Hub µÄ´ÖÂÔÎ»ÖÃ
+	// 4. æŠŠ HubOffset ä¹Ÿè·Ÿç€æ—‹è½¬è¿‡å»ï¼Œä½œä¸º Hub çš„ç²—ç•¥ä½ç½®
 	FVector3f HubOffset = KineConfig.HubOffsetFromLowerJoint;
 	HubOffset.Y *= SideSign;
 	FVector3f HubOffsetFromLowerJointChassis = HubChassisRot.RotateVector(HubOffset);
@@ -681,15 +687,15 @@ FQuat4f FVehicleSuspensionSolver::MakeQuatFrom2DVectors(const FVector2f From, co
 	FVector2f A = From.GetSafeNormal();
 	FVector2f B = To.GetSafeNormal();
 
-	float cosTheta = FVector2f::DotProduct(A, B);              // cos¦È
-	float sinTheta = A.X * B.Y - A.Y * B.X;                    // sin¦È£¨2D ²æ»ı£©
+	float cosTheta = FVector2f::DotProduct(A, B);              // cosÎ¸
+	float sinTheta = A.X * B.Y - A.Y * B.X;                    // sinÎ¸ï¼ˆ2D å‰ç§¯ï¼‰
 
 	// Clamp for numerical stability
 	cosTheta = FMath::Clamp(cosTheta, -1.0f, 1.0f);
 
-	float cosHalf = FMath::Sqrt((1.0f + cosTheta) * 0.5f);    // cos(¦È/2)
-	float sinHalf = FMath::Sqrt((1.0f - cosTheta) * 0.5f);    // sin(¦È/2)
-	sinHalf *= FMath::Sign(sinTheta);                         // ±£³Ö·½Ïò
+	float cosHalf = FMath::Sqrt((1.0f + cosTheta) * 0.5f);    // cos(Î¸/2)
+	float sinHalf = FMath::Sqrt((1.0f - cosTheta) * 0.5f);    // sin(Î¸/2)
+	sinHalf *= FMath::Sign(sinTheta);                         // ä¿æŒæ–¹å‘
 
 	FVector3f axisNorm = Axis.GetSafeNormal();
 	return FQuat4f(
@@ -851,71 +857,71 @@ void FVehicleSuspensionSolver::SolveSolidAxlePosture(
 	FVector3f& OutAxleCenter,
 	FQuat4f& OutAxleRotation)
 {
-	// È·¶¨ YZ ½âËãÆ½ÃæµÄºáÏòÔ­µã (ÍêÃÀ¾ÓÖĞÓÚÁ½±ßËş¶¥)
+	// ç¡®å®š YZ è§£ç®—å¹³é¢çš„æ¨ªå‘åŸç‚¹ (å®Œç¾å±…ä¸­äºä¸¤è¾¹å¡”é¡¶)
 	const float AxleCenterY = (LeftTopMountChassis.Y + RightTopMountChassis.Y) * 0.5f;
 	const float AxleCenterX = (LeftTopMountChassis.X + RightTopMountChassis.X) * 0.5f;
 
-	// ³õÊ¼²Â²âÖµ
+	// åˆå§‹çŒœæµ‹å€¼
 	FVector3f GuessBallJoint_L = LeftTopMountChassis - FVector3f::UpVector * LeftStrutLength;
 	FVector3f GuessBallJoint_R = RightTopMountChassis - FVector3f::UpVector * RightStrutLength;
 	float CurrentAxleCenterZ = (GuessBallJoint_L.Z + GuessBallJoint_R.Z) * 0.5f;
 
 	float GuessDeltaY = GuessBallJoint_L.Y - GuessBallJoint_L.Y;
 	float GuessDeltaZ = GuessBallJoint_L.Z - GuessBallJoint_L.Z;
-	float CurrentRollAngle = 0.f /* FMath::Atan2(GuessDeltaY, GuessDeltaZ) <-ÓĞÆæµã£¬²»ÈçÖ±½Ó°Ñ³õÊ¼ÖµÉèÎª 0 */;
+	float CurrentRollAngle = 0.f /* FMath::Atan2(GuessDeltaY, GuessDeltaZ) <-æœ‰å¥‡ç‚¹ï¼Œä¸å¦‚ç›´æ¥æŠŠåˆå§‹å€¼è®¾ä¸º 0 */;
 
 	const float TargetLeftStrutSq = LeftStrutLength * LeftStrutLength;
 	const float TargetRightStrutSq = RightStrutLength * RightStrutLength;
 
-	// ×î¶à 5 ´Îµü´ú
+	// æœ€å¤š 5 æ¬¡è¿­ä»£
 	for (int32 Iteration = 0; Iteration < 5; ++Iteration)
 	{
 		float SinTheta = FMath::Sin(CurrentRollAngle);
 		float CosTheta = FMath::Cos(CurrentRollAngle);
 
-		// »ùÓÚµ±Ç°²Â²âÖµ£¬¼ÆËã×óÓÒÏÂÇòÍ·µÄ×ø±ê
+		// åŸºäºå½“å‰çŒœæµ‹å€¼ï¼Œè®¡ç®—å·¦å³ä¸‹çƒå¤´çš„åæ ‡
 		float LeftBallJointY = AxleCenterY - AxleHalfWidth * CosTheta;
 		float LeftBallJointZ = CurrentAxleCenterZ - AxleHalfWidth * SinTheta;
 
 		float RightBallJointY = AxleCenterY + AxleHalfWidth * CosTheta;
 		float RightBallJointZ = CurrentAxleCenterZ + AxleHalfWidth * SinTheta;
 
-		// ¼ÆËãËş¶¥µ½µ±Ç°ÇòÍ·µÄ¿Õ¼äÏòÁ¿²îÖµ
+		// è®¡ç®—å¡”é¡¶åˆ°å½“å‰çƒå¤´çš„ç©ºé—´å‘é‡å·®å€¼
 		float DeltaY_Left = LeftTopMountChassis.Y - LeftBallJointY;
 		float DeltaZ_Left = LeftTopMountChassis.Z - LeftBallJointZ;
 
 		float DeltaY_Right = RightTopMountChassis.Y - RightBallJointY;
 		float DeltaZ_Right = RightTopMountChassis.Z - RightBallJointZ;
 
-		// ¼ÆËã²Ğ²î (Residuals)£¬Ä¿±êÊÇÈÃËüÃÇ±Æ½ü 0
+		// è®¡ç®—æ®‹å·® (Residuals)ï¼Œç›®æ ‡æ˜¯è®©å®ƒä»¬é€¼è¿‘ 0
 		float Residual_Left = (DeltaY_Left * DeltaY_Left) + (DeltaZ_Left * DeltaZ_Left) - TargetLeftStrutSq;
 		float Residual_Right = (DeltaY_Right * DeltaY_Right) + (DeltaZ_Right * DeltaZ_Right) - TargetRightStrutSq;
 
-		// Æ«µ¼Êı/ÑÅ¿É±È¾ØÕóÔªËØ (Jacobian Elements)
-		// J11: Left ²Ğ²î¶Ô CenterZ µÄµ¼Êı
+		// åå¯¼æ•°/é›…å¯æ¯”çŸ©é˜µå…ƒç´  (Jacobian Elements)
+		// J11: Left æ®‹å·®å¯¹ CenterZ çš„å¯¼æ•°
 		float J11 = -2.0f * DeltaZ_Left;
-		// J12: Left ²Ğ²î¶Ô RollAngle µÄµ¼Êı
+		// J12: Left æ®‹å·®å¯¹ RollAngle çš„å¯¼æ•°
 		float J12 = -2.0f * DeltaY_Left * (AxleHalfWidth * SinTheta) + 2.0f * DeltaZ_Left * (AxleHalfWidth * CosTheta);
 
-		// J21: Right ²Ğ²î¶Ô CenterZ µÄµ¼Êı
+		// J21: Right æ®‹å·®å¯¹ CenterZ çš„å¯¼æ•°
 		float J21 = -2.0f * DeltaZ_Right;
-		// J22: Right ²Ğ²î¶Ô RollAngle µÄµ¼Êı
+		// J22: Right æ®‹å·®å¯¹ RollAngle çš„å¯¼æ•°
 		float J22 = 2.0f * DeltaY_Right * (AxleHalfWidth * SinTheta) - 2.0f * DeltaZ_Right * (AxleHalfWidth * CosTheta);
 
-		// ¾ØÕóĞĞÁĞÊ½
+		// çŸ©é˜µè¡Œåˆ—å¼
 		float Determinant = (J11 * J22) - (J12 * J21);
 
-		// Èç¹ûÔâÓöÊıÑ§Ææµã Determinant = 0£¬ËµÃ÷×ËÌ¬±ÀÀ££¬SafeDivideÄ¬ÈÏ·µ»Ø0£¬»áÇå³ıStepCenterZºÍStepRollAngle
+		// å¦‚æœé­é‡æ•°å­¦å¥‡ç‚¹ Determinant = 0ï¼Œè¯´æ˜å§¿æ€å´©æºƒï¼ŒSafeDivideé»˜è®¤è¿”å›0ï¼Œä¼šæ¸…é™¤StepCenterZå’ŒStepRollAngle
 		float DeterminantInv = UVehicleUtilities::SafeDivide(1.f, Determinant);
 
-		// ¿ËÀ³Ä··¨ÔòÇó½âÔöÁ¿
+		// å…‹è±å§†æ³•åˆ™æ±‚è§£å¢é‡
 		float StepCenterZ = (J22 * Residual_Left - J12 * Residual_Right) * DeterminantInv;
 		float StepRollAngle = (-J21 * Residual_Left + J11 * Residual_Right) * DeterminantInv;
 
 		CurrentAxleCenterZ -= StepCenterZ;
 		CurrentRollAngle -= StepRollAngle;
 
-		// ÊÕÁ²ÅĞ¶Ï
+		// æ”¶æ•›åˆ¤æ–­
 		if (FMath::Abs(StepCenterZ) < SMALL_NUMBER && FMath::Abs(StepRollAngle) < SMALL_NUMBER)
 		{
 			break;
@@ -1091,28 +1097,28 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 
 		const float ThisWheelChassisZ = Ctx.HubChassisTransform.GetLocation().Z;
 
-		// 1. »ñÈ¡ÖÊĞÄµ½¹ÒÔØµãµÄÊÀ½ç¿Õ¼äÏòÁ¿ (r)
+		// 1. è·å–è´¨å¿ƒåˆ°æŒ‚è½½ç‚¹çš„ä¸–ç•Œç©ºé—´å‘é‡ (r)
 		FVector MountWorldPos = Ctx.ChassisWorldTransform.TransformPositionNoScale(FVector(Ctx.TopMountChassisLocation));
 		FVector RadiusVec = MountWorldPos - FVector(ChassisState.CoMWorldLocation);
 
-		// 2. ÌáÈ¡µ×ÅÌ×´Ì¬
+		// 2. æå–åº•ç›˜çŠ¶æ€
 		FVector A_com = ChassisState.LinearAcceleration;
 		FVector Alpha = ChassisState.AngularAcceleration;
 		FVector Omega = ChassisState.AngularVelocity;
 
-		// 3. ¼ÆËãÇĞÏò¼ÓËÙ¶È: Alpha x r
+		// 3. è®¡ç®—åˆ‡å‘åŠ é€Ÿåº¦: Alpha x r
 		FVector TangentialAccel = FVector::CrossProduct(Alpha, RadiusVec);
 
-		// 4. ¼ÆËãÏòĞÄ¼ÓËÙ¶È: Omega x (Omega x r)
+		// 4. è®¡ç®—å‘å¿ƒåŠ é€Ÿåº¦: Omega x (Omega x r)
 		FVector CentripetalAccel = FVector::CrossProduct(Omega, FVector::CrossProduct(Omega, RadiusVec));
 
-		// 5. ¹ÒÔØµã×Ü¾ø¶Ô¼ÓËÙ¶È
+		// 5. æŒ‚è½½ç‚¹æ€»ç»å¯¹åŠ é€Ÿåº¦
 		FVector MountWorldAcceleration = A_com + TangentialAccel + CentripetalAccel;
 
-		// 6. Í¶Ó°µ½¼õÕğÆ÷£¨Strut£©·½Ïò
+		// 6. æŠ•å½±åˆ°å‡éœ‡å™¨ï¼ˆStrutï¼‰æ–¹å‘
 		float StrutAcceleration = FVector::DotProduct(MountWorldAcceleration, Ctx.StrutWorldDirection);
 
-		// 7. ¼ÆËãÎ±¹ßĞÔÁ¦ (F = -m * a)¡£µ¥Î»£ºN
+		// 7. è®¡ç®—ä¼ªæƒ¯æ€§åŠ› (F = -m * a)ã€‚å•ä½ï¼šN
 		float FictitiousForce = Ctx.VirtualUnsprungMass * StrutAcceleration * cm_to_m;
 
 		if (SpringConfig.bUseDampingRatio)
@@ -1137,7 +1143,7 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 			float CurrentSubstepTime = (i + 1) * SubDt;
 			float InterpolatedGroundLimit = LastStrutLengthLimit + RayStrutVelocity * CurrentSubstepTime;
 
-			// 1. ¼ÆËãµ±Ç°µÄÏÔÊ½¾²Ì¬Á¦ 
+			// 1. è®¡ç®—å½“å‰çš„æ˜¾å¼é™æ€åŠ›
 			float SpringCompression = KineConfig.Stroke - CurrentLength;
 			float SpringForce = EquivSpring * SpringCompression;
 
@@ -1148,26 +1154,26 @@ void FVehicleSuspensionSolver::UpdateStrutLength(
 
 			float StaticForce = SpringForce + GravityForce + Preload + SwaybarForce + FictitiousForce;
 
-			// 2. »ùÓÚÏÔÊ½Á¦Ô¤²âËÙ¶È ( 100.f µ¥Î»»»Ëã)
+			// 2. åŸºäºæ˜¾å¼åŠ›é¢„æµ‹é€Ÿåº¦ ( 100.f å•ä½æ¢ç®—)
 			float PredictedVelocity = CurrentVelocity + (StaticForce * VirtualUnsprungMassInv) * m_to_cm * SubDt;
 
-			// 3. È«ÒşÊ½Çó½â·ÖÄ¸ (Implicit Denominator)
+			// 3. å…¨éšå¼æ±‚è§£åˆ†æ¯ (Implicit Denominator)
 			float EquivDamp = (PredictedVelocity > 0.f) ? ReboundDamp : CompDamp;
 
-			// ÒşÊ½×èÄáÏî: C * dt / m
+			// éšå¼é˜»å°¼é¡¹: C * dt / m
 			float ImplicitDampingTerm = EquivDamp * SubDt * VirtualUnsprungMassInv;
 
-			// ÒşÊ½¸Õ¶ÈÏî: K * dt^2 / m (ĞèÒª´øÉÏºÍ¼ÓËÙ¶ÈÏàÍ¬µÄ 100.f µ¥Î»»»Ëã)
+			// éšå¼åˆšåº¦é¡¹: K * dt^2 / m (éœ€è¦å¸¦ä¸Šå’ŒåŠ é€Ÿåº¦ç›¸åŒçš„ 100.f å•ä½æ¢ç®—)
 			float ImplicitSpringTerm = TotalStiffness * VirtualUnsprungMassInv * SubDt * SubDt * m_to_cm;
 
-			// °Ñ¸Õ¶ÈÏî¼ÓÈë·ÖÄ¸
+			// æŠŠåˆšåº¦é¡¹åŠ å…¥åˆ†æ¯
 			float DampingDenominator = 1.f + ImplicitDampingTerm + ImplicitSpringTerm;
 
-			// 4. ¸üĞÂ×îÖÕËÙ¶ÈÓëÎ»ÖÃ
+			// 4. æ›´æ–°æœ€ç»ˆé€Ÿåº¦ä¸ä½ç½®
 			CurrentVelocity = PredictedVelocity / DampingDenominator;
 			CurrentLength += CurrentVelocity * SubDt;
 
-			// ÔË¶¯Ñ§Ô¼Êø
+			// è¿åŠ¨å­¦çº¦æŸ
 			if (CurrentLength > InterpolatedGroundLimit)
 			{
 				bGroundConstraintTriggered = true;
@@ -1492,54 +1498,54 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 	LowerArmAxisLocal.Y *= Ctx.WheelSideSign;
 	Ctx.LowerWishboneChassisAxis = Ctx.WheelCompToChassisTransform.TransformVectorNoScale(LowerArmAxisLocal).GetSafeNormal();
 
-	// 1. »ñÈ¡Ä¿±ê¼õÕğÆ÷³¤¶È£¨ÇòÃæ°ë¾¶ L_s£©
+	// 1. è·å–ç›®æ ‡å‡éœ‡å™¨é•¿åº¦ï¼ˆçƒé¢åŠå¾„ L_sï¼‰
 	float TargetStrutLength = Config.MinStrutLength + Ctx.StrutCurrentLength;
 	float StrutLenSq = TargetStrutLength * TargetStrutLength;
 
-	// 2. »ñÈ¡°Ú±Û²ÎÊı£¨Ô²°ë¾¶ R_arm£©
+	// 2. è·å–æ‘†è‡‚å‚æ•°ï¼ˆåœ†åŠå¾„ R_armï¼‰
 	float RArm = Config.LowerWishbone.Length;
 	float RArmSq = RArm * RArm;
 
-	// 3. ÌáÈ¡Èı¸öÒÑÖªµÄÈıÎ¬×ø±ê/ÏòÁ¿
+	// 3. æå–ä¸‰ä¸ªå·²çŸ¥çš„ä¸‰ç»´åæ ‡/å‘é‡
 	FVector3f Pivot = Ctx.LowerPivotChassisLocation;
 	FVector3f Axis = Ctx.LowerWishboneChassisAxis;
 	FVector3f TM = Ctx.TopMountChassisLocation;
 
-	// D ÊÇ´ÓËş¶¥Ö¸ÏòÏÂ°Ú±Û×ªÖáµÄÏòÁ¿
+	// D æ˜¯ä»å¡”é¡¶æŒ‡å‘ä¸‹æ‘†è‡‚è½¬è½´çš„å‘é‡
 	FVector3f D = Pivot - TM;
 	float DSq = D.SquaredLength();
 
-	// 4. ¿Õ¼ä½âÎö¼¸ºÎºËĞÄ·½³Ì£º(Ls^2 - R^2 - ||D||^2) / 2
+	// 4. ç©ºé—´è§£æå‡ ä½•æ ¸å¿ƒæ–¹ç¨‹ï¼š(Ls^2 - R^2 - ||D||^2) / 2
 	float K = (StrutLenSq - RArmSq - DSq) * 0.5f;
 
-	// D ÔÚ´¹Ö±ÓÚ°Ú±ÛĞı×ªÖáÆ½ÃæÉÏµÄÍ¶Ó°
+	// D åœ¨å‚ç›´äºæ‘†è‡‚æ—‹è½¬è½´å¹³é¢ä¸Šçš„æŠ•å½±
 	FVector3f DProj = D - FVector3f::DotProduct(D, Axis) * Axis;
 	float DProjLenSq = DProj.SquaredLength();
 
 	bool bValidIntersection = false;
 
-	// ·ÀÖ¹Ëş¶¥Ç¡ºÃÔÚ°Ú±ÛĞı×ªÖáÉÏµ¼ÖÂ³ıÒÔÁã£¨ÏÖÊµÖĞ¼õÕğÆ÷²»¿ÉÄÜÕâÑù°²×°£©
+	// é˜²æ­¢å¡”é¡¶æ°å¥½åœ¨æ‘†è‡‚æ—‹è½¬è½´ä¸Šå¯¼è‡´é™¤ä»¥é›¶ï¼ˆç°å®ä¸­å‡éœ‡å™¨ä¸å¯èƒ½è¿™æ ·å®‰è£…ï¼‰
 	if (DProjLenSq > SMALL_NUMBER)
 	{
 		float DProjLen = FMath::Sqrt(DProjLenSq);
-		FVector3f U = DProj / DProjLen; // Í¶Ó°ÃæÉÏµÄ¾Ö²¿»ùµ× X Öá
+		FVector3f U = DProj / DProjLen; // æŠ•å½±é¢ä¸Šçš„å±€éƒ¨åŸºåº• X è½´
 
 		float Du = K / DProjLen;
 
-		// ÅĞ±ğÊ½£º¼ì²é¼õÕğÆ÷ÊÇ·ñÄÜ¹»´¥¼°°Ú±ÛµÄÔË¶¯Ô²»·
+		// åˆ¤åˆ«å¼ï¼šæ£€æŸ¥å‡éœ‡å™¨æ˜¯å¦èƒ½å¤Ÿè§¦åŠæ‘†è‡‚çš„è¿åŠ¨åœ†ç¯
 		if (Du * Du <= RArmSq)
 		{
 			bValidIntersection = true;
 
-			// Dv ÊÇÕı½»·½ÏòµÄ·ÖÁ¿
+			// Dv æ˜¯æ­£äº¤æ–¹å‘çš„åˆ†é‡
 			float Dv = FMath::Sqrt(RArmSq - Du * Du);
-			FVector3f VDir = FVector3f::CrossProduct(Axis, U).GetSafeNormal(); // Í¶Ó°ÃæÉÏµÄ¾Ö²¿»ùµ× Y Öá
+			FVector3f VDir = FVector3f::CrossProduct(Axis, U).GetSafeNormal(); // æŠ•å½±é¢ä¸Šçš„å±€éƒ¨åŸºåº• Y è½´
 
-			// µÃ³öÁ½¸ö¾ø¶Ô¾«È·µÄ½âÎö½â
+			// å¾—å‡ºä¸¤ä¸ªç»å¯¹ç²¾ç¡®çš„è§£æè§£
 			FVector3f P1 = Pivot + Du * U + Dv * VDir;
 			FVector3f P2 = Pivot + Du * U - Dv * VDir;
 
-			// ¶Ô±ÈÉÏÒ»Ö¡µÄÏÂÇòÍ·Î»ÖÃ£¬Ñ¡Ôñ¾àÀë×î½üµÄ½â£¬±£³Ö¿Õ¼äÔË¶¯µÄÁ¬ĞøĞÔ
+			// å¯¹æ¯”ä¸Šä¸€å¸§çš„ä¸‹çƒå¤´ä½ç½®ï¼Œé€‰æ‹©è·ç¦»æœ€è¿‘çš„è§£ï¼Œä¿æŒç©ºé—´è¿åŠ¨çš„è¿ç»­æ€§
 			float Dist1Sq = (P1 - Ctx.LowerBallJointChassisLocation).SquaredLength();
 			float Dist2Sq = (P2 - Ctx.LowerBallJointChassisLocation).SquaredLength();
 
@@ -1547,14 +1553,14 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 		}
 		else
 		{
-			// °²È«½µ¼¶£ºµ±¼õÕğÆ÷¹ı³¤»ò¹ı¶Ì£¬µ¼ÖÂÇòÃæºÍÔ²Ã»ÓĞ½»µãÊ±¡£
-			// ÎÒÃÇ½«×ø±êÇ¯ÖÆ£¨Clamp£©ÔÚ°Ú±ÛÔ²ÖÜÉÏ¾àÀë¼õÕğÆ÷Ä¿±êÇòÌå×î½üµÄÄÇ¸öÎïÀí¼«Öµµã¡£
+			// å®‰å…¨é™çº§ï¼šå½“å‡éœ‡å™¨è¿‡é•¿æˆ–è¿‡çŸ­ï¼Œå¯¼è‡´çƒé¢å’Œåœ†æ²¡æœ‰äº¤ç‚¹æ—¶ã€‚
+			// æˆ‘ä»¬å°†åæ ‡é’³åˆ¶ï¼ˆClampï¼‰åœ¨æ‘†è‡‚åœ†å‘¨ä¸Šè·ç¦»å‡éœ‡å™¨ç›®æ ‡çƒä½“æœ€è¿‘çš„é‚£ä¸ªç‰©ç†æå€¼ç‚¹ã€‚
 			Ctx.LowerBallJointChassisLocation = Pivot + RArm * FMath::Sign(Du) * U;
 		}
 	}
 	else
 	{
-		// ¼«Æäº±¼ûµÄÆæÒì×´Ì¬¶µµ×£º±£³ÖÉÏÒ»´ÎµÄ·½Ïò²¢ÏŞÖÆÔÚ°Ú±Û³¤¶ÈÉÏ
+		// æå…¶ç½•è§çš„å¥‡å¼‚çŠ¶æ€å…œåº•ï¼šä¿æŒä¸Šä¸€æ¬¡çš„æ–¹å‘å¹¶é™åˆ¶åœ¨æ‘†è‡‚é•¿åº¦ä¸Š
 		FVector3f OldV = Ctx.LowerBallJointChassisLocation - Pivot;
 		FVector3f OldVProj = OldV - FVector3f::DotProduct(OldV, Axis) * Axis;
 		if (OldVProj.SquaredLength() > SMALL_NUMBER)
@@ -1563,7 +1569,7 @@ void FVehicleSuspensionSolver::SolveLowerWishbone(
 		}
 	}
 
-	// 5. ¸üĞÂÉÏÏÂÎÄ×´Ì¬
+	// 5. æ›´æ–°ä¸Šä¸‹æ–‡çŠ¶æ€
 	Ctx.StrutChassisDirection = (Ctx.TopMountChassisLocation - Ctx.LowerBallJointChassisLocation).GetSafeNormal();
 	Ctx.bValidKinematicsConfig = Ctx.bValidKinematicsConfig && bValidIntersection;
 }
@@ -1698,7 +1704,7 @@ bool FVehicleSuspensionSolver::SolveUpperWishbone(
 	FVector3f Pos1Dir = (OutPos1 - LowerBallPos).GetSafeNormal();
 	FVector3f Pos2Dir = (OutPos2 - LowerBallPos).GetSafeNormal();
 
-	// Êä³ö
+	// è¾“å‡º
 	OutUpperBallPos = FVector3f::DotProduct(Pos1Dir, StrutDir) > FVector3f::DotProduct(Pos2Dir, StrutDir) ? OutPos1 : OutPos2;
 
 	return true;
@@ -1773,27 +1779,27 @@ void FVehicleSuspensionSolver::ComputeSolidAxle(
 	const FVector3f& AxleChassisCenter,
 	const FQuat4f& AxleChassisRotation)
 {
-	// 4. ×ªÏòÖá (Steer Axis / Kingpin)
+	// 4. è½¬å‘è½´ (Steer Axis / Kingpin)
 	FVector3f DefaultForward = FVector3f(1.f, 0.f, 0.f);
 	FVector3f AxleDirectionChassis = AxleChassisRotation.RotateVector(FVector3f::RightVector);
 	Ctx.LowerBallJointChassisLocation = AxleChassisCenter + AxleDirectionChassis * AxleHalfWidth * Ctx.WheelSideSign;
 	Ctx.SteerAxisChassisDirection = FVector3f::CrossProduct(DefaultForward, AxleDirectionChassis).GetSafeNormal();
 
-	// 5. Ó¦ÓÃ×ªÏò½Ç
+	// 5. åº”ç”¨è½¬å‘è§’
 	FQuat4f SteeringBiasRotation = FQuat4f(Ctx.SteerAxisChassisDirection, FMath::DegreesToRadians(Ctx.SteeringAngle));
 
-	// 6. ×éºÏ Hub Ğı×ª
+	// 6. ç»„åˆ Hub æ—‹è½¬
 	FQuat4f HubChassisRot = SteeringBiasRotation * AxleChassisRotation;
 	Ctx.HubChassisTransform.SetRotation(HubChassisRot);
 
-	// 7. Æ«ÒÆµ½ÂÖĞÄ
+	// 7. åç§»åˆ°è½®å¿ƒ
 	FVector3f HubOffset = Config.HubOffsetFromLowerJoint;
 	HubOffset.Y *= Ctx.WheelSideSign;
 	Ctx.HubOffsetFromLowerJointChassis = HubChassisRot.RotateVector(HubOffset);
 
 	Ctx.HubChassisTransform.SetLocation(Ctx.LowerBallJointChassisLocation + Ctx.HubOffsetFromLowerJointChassis);
 
-	// 8. »º´æÊÀ½ç¿Õ¼äÏòÁ¿Óë¼õÕğÆ÷ÊÜÁ¦·½Ïò
+	// 8. ç¼“å­˜ä¸–ç•Œç©ºé—´å‘é‡ä¸å‡éœ‡å™¨å—åŠ›æ–¹å‘
 	FVector3f WheelChassisRightVec = Ctx.HubChassisTransform.GetRotation().GetRightVector();
 	Ctx.WheelWorldRightVector = Ctx.ChassisWorldTransform.TransformVectorNoScale((FVector)WheelChassisRightVec);
 	Ctx.HubWorldLocation = Ctx.ChassisWorldTransform.TransformPositionNoScale((FVector)Ctx.HubChassisTransform.GetLocation());

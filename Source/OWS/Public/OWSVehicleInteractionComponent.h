@@ -47,6 +47,12 @@ public:
 		APawn* RequestedVehicle,
 		FName RequestedDoorId,
 		FText& OutFailureReason);
+	/** Contact responses must not take ownership of the verified bailout motion. */
+	bool IsCharacterInBailout(const ACharacter* Character) const
+	{
+		return (bControlledBailoutActive && ControlledBailoutCharacter == Character) ||
+			(bRagdollActive && RagdollCharacter == Character);
+	}
 
 protected:
 	virtual void BeginPlay() override;
@@ -57,6 +63,7 @@ protected:
 		FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	friend struct FOWSMissingRollFixture;
 	// Polled every frame from TickComponent. Reading raw key state via
 	// IsInputKeyDown is immune to Enhanced Input consuming the key, which the
 	// previous BindKey approach was not.

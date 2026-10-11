@@ -23,7 +23,8 @@ namespace
 			ECC_WorldDynamic,
 			ECC_Pawn,
 			ECC_PhysicsBody,
-			ECC_Vehicle
+			ECC_Vehicle,
+			ECC_GameTraceChannel2 // OWSCharacterBody: fallen characters retain targeting.
 		};
 	}
 
@@ -101,6 +102,17 @@ void UOWSSelectorComponent::EnsureDefaultConfiguration()
 void UOWSSelectorComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	// Extend only the former stock category list for the new bodily contact
+	// channel. Developer-authored filters remain unchanged.
+	auto IncludeStockContactBody = [](TArray<TEnumAsByte<ECollisionChannel>>& Types)
+	{
+		if (Types.Num() == 5 && Types.Contains(ECC_WorldStatic) && Types.Contains(ECC_WorldDynamic) &&
+			Types.Contains(ECC_Pawn) && Types.Contains(ECC_PhysicsBody) && Types.Contains(ECC_Vehicle))
+			Types.Add(ECC_GameTraceChannel2);
+	};
+	IncludeStockContactBody(PrecisionRayObjectTypes);
+	for (FOWSSelectorFunction& Function : SelectorFunctions)
+		for (FOWSRangeSelector& Entry : Function.SelectorStack) IncludeStockContactBody(Entry.DetectableObjectTypes);
 	EnsureDefaultConfiguration();
 	UE_LOG(LogTemp, Display, TEXT("[OWSSelector] BeginPlay owner=%s class=%s world=%d"),
 		GetOwner() ? *GetOwner()->GetName() : TEXT("none"),
